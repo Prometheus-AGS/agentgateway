@@ -46,23 +46,62 @@ jobs:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Clear corrupted Docker Buildx cache
+    - name: Create surgical Dockerfile fix
       run: |
-        # Clear the corrupted buildx cache entirely
-        docker buildx prune --all --force || true
-        echo "Cleared buildx cache to avoid corruption issues"
+        # Create precise fix that only replaces the problematic cache mount RUN commands
+        cp Dockerfile Dockerfile.tmp
 
-    - name: Create clean build environment
-      run: |
-        # Use original Dockerfile but ensure we get a clean build
-        # The cache corruption should be resolved by the buildx prune above
-        echo "Using original Dockerfile with clean cache environment"
+        # Use awk to surgically replace only the specific problematic RUN blocks
+        awk '
+        BEGIN {
+          in_cargo_fetch = 0
+          in_cargo_build = 0
+          skip_lines = 0
+        }
+
+        # Detect start of cargo fetch RUN block (line 83)
+        /^RUN \\$/ && NR == 83 {
+          print "RUN cargo fetch --locked"
+          in_cargo_fetch = 1
+          skip_lines = 3  # Skip the next 3 lines (mount directives and command)
+          next
+        }
+
+        # Detect start of cargo build RUN block (line 87)
+        /^RUN --mount=type=cache,target=\/app\/target/ && NR == 87 {
+          print "RUN \\"
+          print "    <<EOF"
+          in_cargo_build = 1
+          skip_lines = 2  # Skip the mount directives
+          next
+        }
+
+        # Skip lines that are part of the problematic blocks
+        skip_lines > 0 {
+          skip_lines--
+          next
+        }
+
+        # Reset flags when we encounter EOF marker (end of cargo build block)
+        /^EOF$/ {
+          in_cargo_build = 0
+        }
+
+        # Print all other lines unchanged
+        { print }
+
+        ' Dockerfile > Dockerfile.tmp
+
+        echo "Dockerfile surgically modified to remove corrupted cache mounts"
+        echo "Verifying changes around the problematic lines:"
+        echo "=== Lines 80-95 of modified Dockerfile ==="
+        sed -n '80,95p' Dockerfile.tmp
 
     - name: Build and push multi-arch image
       uses: docker/build-push-action@v6
       with:
         context: .
-        file: ./Dockerfile
+        file: ./Dockerfile.tmp
         platforms: linux/amd64,linux/arm64
         push: true
         tags: |
@@ -71,9 +110,8 @@ jobs:
         build-args: |
           VERSION=${{ env.IMAGE_TAG }}
           GIT_REVISION=${{ github.sha }}
-        # Use fresh cache with new key to avoid corruption
-        cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-clean-${{ github.run_number }}
-        cache-to: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache-clean-${{ github.run_number }},mode=max
+        # Disable cache entirely for now to avoid corruption
+        no-cache: true
         pull: true
 
     - name: Install cosign
