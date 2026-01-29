@@ -21,7 +21,18 @@ data:
       listeners:
       - name: main
         routes:
-        - policies:
+        # Health check route - must come first to match before catch-all
+        - name: health
+          matches:
+          - path:
+              exact: /health
+          policies:
+            directResponse:
+              body: '{"status":"healthy","service":"agentgateway"}'
+              status: 200
+        # Main AI route - catch-all for other requests
+        - name: main
+          policies:
             cors:
               allowOrigins:
               - "*"
@@ -38,12 +49,3 @@ data:
               provider:
                 openAI:
                   model: gpt-4o-mini
-        - match:
-            path: /health
-          backends:
-          - static:
-              status: 200
-              body: '{"status":"healthy","service":"agentgateway"}'
-              headers:
-                set:
-                  content-type: "application/json"

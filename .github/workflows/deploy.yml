@@ -153,19 +153,35 @@ jobs:
       run: |
         echo "🩺 Performing health checks..."
 
-        # Wait for pods to be fully ready
-        sleep 30
+        # Get the pod name
+        POD_NAME=$(kubectl get pods -n agentgateway -l app=agentgateway -o jsonpath='{.items[0].metadata.name}')
+        echo "Pod: $POD_NAME"
 
-        # Test via port-forward first
-        echo "Testing via port-forward..."
+        # Test readiness endpoint via port-forward to pod
+        echo "Testing readiness endpoint via port-forward..."
+        kubectl port-forward pod/$POD_NAME 15021:15021 -n agentgateway &
+        PORT_FORWARD_PID=$!
+        sleep 3
+
+        if curl -f http://localhost:15021/healthz/ready; then
+          echo "✅ Readiness check passed"
+        else
+          echo "❌ Readiness check failed"
+        fi
+
+        kill $PORT_FORWARD_PID || true
+        sleep 2
+
+        # Test main service /health endpoint
+        echo "Testing main service /health endpoint..."
         kubectl port-forward svc/agentgateway-service 8080:80 -n agentgateway &
         PORT_FORWARD_PID=$!
-        sleep 5
+        sleep 3
 
         if curl -f http://localhost:8080/health; then
-          echo "✅ Internal health check passed"
+          echo "✅ Service health check passed"
         else
-          echo "❌ Internal health check failed"
+          echo "⚠️  Service health check failed (directResponse route may not be configured)"
         fi
 
         kill $PORT_FORWARD_PID || true
