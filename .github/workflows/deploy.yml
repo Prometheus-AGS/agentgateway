@@ -36,8 +36,14 @@ jobs:
         npm install
         npm run build
 
-    - name: Set up Docker Buildx
+    - name: Set up Docker Buildx (Research-Based Solution)
       uses: docker/setup-buildx-action@v3
+      with:
+        # Create fresh builder with unique name to avoid cache corruption
+        name: fresh-builder-${{ github.run_number }}
+        driver: docker-container
+        # Clean up builder after job to prevent state persistence issues
+        cleanup: true
 
     - name: Log in to Docker Hub
       uses: docker/login-action@v3
@@ -46,62 +52,11 @@ jobs:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Create surgical Dockerfile fix
-      run: |
-        # Create precise fix that only replaces the problematic cache mount RUN commands
-        cp Dockerfile Dockerfile.tmp
-
-        # Use awk to surgically replace only the specific problematic RUN blocks
-        awk '
-        BEGIN {
-          in_cargo_fetch = 0
-          in_cargo_build = 0
-          skip_lines = 0
-        }
-
-        # Detect start of cargo fetch RUN block (line 83)
-        /^RUN \\$/ && NR == 83 {
-          print "RUN cargo fetch --locked"
-          in_cargo_fetch = 1
-          skip_lines = 3  # Skip the next 3 lines (mount directives and command)
-          next
-        }
-
-        # Detect start of cargo build RUN block (line 87)
-        /^RUN --mount=type=cache,target=\/app\/target/ && NR == 87 {
-          print "RUN \\"
-          print "    <<EOF"
-          in_cargo_build = 1
-          skip_lines = 2  # Skip the mount directives
-          next
-        }
-
-        # Skip lines that are part of the problematic blocks
-        skip_lines > 0 {
-          skip_lines--
-          next
-        }
-
-        # Reset flags when we encounter EOF marker (end of cargo build block)
-        /^EOF$/ {
-          in_cargo_build = 0
-        }
-
-        # Print all other lines unchanged
-        { print }
-
-        ' Dockerfile > Dockerfile.tmp
-
-        echo "Dockerfile surgically modified to remove corrupted cache mounts"
-        echo "Verifying changes around the problematic lines:"
-        echo "=== Lines 80-95 of modified Dockerfile ==="
-        sed -n '80,95p' Dockerfile.tmp
-
-    - name: Build and push multi-arch image
+    - name: Build and push multi-arch image (Original Dockerfile + Research Solution)
       uses: docker/build-push-action@v6
       with:
         context: .
-        file: ./Dockerfile.tmp
+        file: ./Dockerfile
         platforms: linux/amd64,linux/arm64
         push: true
         tags: |
@@ -110,8 +65,10 @@ jobs:
         build-args: |
           VERSION=${{ env.IMAGE_TAG }}
           GIT_REVISION=${{ github.sha }}
-        # Disable cache entirely for now to avoid corruption
-        no-cache: true
+        # Research-backed solution: Use GitHub Actions cache backend instead of registry
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        # Ensure fresh base images
         pull: true
 
     - name: Install cosign
