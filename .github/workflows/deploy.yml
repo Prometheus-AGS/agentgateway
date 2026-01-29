@@ -50,14 +50,33 @@ jobs:
       run: |
         # Create a temporary Dockerfile that removes the problematic cache mounts
         cp Dockerfile Dockerfile.tmp
-        # Remove cache mount lines to avoid corrupted cache
-        sed -i 's/--mount=type=cache,id=cargo[^\\]*//' Dockerfile.tmp
-        sed -i 's/--mount=type=cache,id=cargo-git[^\\]*//' Dockerfile.tmp
-        sed -i 's/--mount=type=cache,target=\/app\/target[^\\]*//' Dockerfile.tmp
-        # Clean up any empty RUN lines or backslashes
-        sed -i '/^[[:space:]]*\\[[:space:]]*$/d' Dockerfile.tmp
-        sed -i 's/RUN[[:space:]]*\\/RUN /' Dockerfile.tmp
-        echo "Modified Dockerfile created"
+
+        # Use Python to properly handle the multi-line RUN commands with cache mounts
+        python3 << 'PYTHON_EOF'
+        import re
+
+        with open('Dockerfile.tmp', 'r') as f:
+            content = f.read()
+
+        # Remove cache mount options from RUN commands while preserving structure
+        # Pattern matches: --mount=type=cache,... followed by optional whitespace and backslash
+        content = re.sub(r'--mount=type=cache[^\\]*\\\s*\n\s*', '', content, flags=re.MULTILINE)
+        content = re.sub(r'--mount=type=cache[^\\]*\\?\s*', '', content, flags=re.MULTILINE)
+
+        # Clean up any orphaned backslashes and fix RUN command formatting
+        content = re.sub(r'RUN\s*\\\s*\n\s*cargo', 'RUN cargo', content)
+        content = re.sub(r'RUN\s*\\\s*\n\s*--mount', 'RUN --mount', content)
+
+        # Remove any remaining orphaned cache mount lines
+        content = re.sub(r'^\s*--mount=type=cache.*$', '', content, flags=re.MULTILINE)
+
+        with open('Dockerfile.tmp', 'w') as f:
+            f.write(content)
+        PYTHON_EOF
+
+        echo "Temporary Dockerfile created without cache mounts"
+        echo "First 100 lines of modified Dockerfile:"
+        head -100 Dockerfile.tmp
 
     - name: Build and push multi-arch image
       uses: docker/build-push-action@v6
