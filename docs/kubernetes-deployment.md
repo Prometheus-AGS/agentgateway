@@ -1,17 +1,73 @@
 # AgentGateway Kubernetes Deployment Guide
 
-This guide covers deploying AgentGateway to Google Kubernetes Engine (GKE) with Docker Hub registry, SSL certificates via Let's Encrypt, and automated CI/CD.
+This guide covers deploying AgentGateway to Kubernetes using the **official kgateway control plane** with Gateway API, Docker Hub registry, SSL certificates via Let's Encrypt, and automated CI/CD.
+
+> **Note**: This deployment uses the kgateway control plane, which is the recommended standard for Kubernetes deployments. For local development, see the [local deployment docs](https://agentgateway.dev/docs/local/).
 
 ## Table of Contents
 
-1. [Prerequisites](#prerequisites)
-2. [Initial Setup](#initial-setup)
-3. [GitHub Secrets Configuration](#github-secrets-configuration)
-4. [Manual Deployment](#manual-deployment)
-5. [Automated Deployment](#automated-deployment)
-6. [Verification](#verification)
-7. [Troubleshooting](#troubleshooting)
-8. [Maintenance](#maintenance)
+1. [Deployment Overview](#deployment-overview)
+2. [Prerequisites](#prerequisites)
+3. [Initial Setup](#initial-setup)
+4. [GitHub Secrets Configuration](#github-secrets-configuration)
+5. [Manual Deployment](#manual-deployment)
+6. [Automated Deployment](#automated-deployment)
+7. [Verification](#verification)
+8. [Troubleshooting](#troubleshooting)
+9. [Maintenance](#maintenance)
+10. [Migration from Old Deployment](#migration-from-old-deployment)
+
+## Deployment Overview
+
+### Architecture
+
+This deployment uses the **kgateway control plane**, which provides:
+- Automatic proxy lifecycle management
+- Gateway API-based declarative configuration
+- Validated configuration at apply-time
+- Standards-compliant Kubernetes integration
+
+```
+┌──────────────────────────────────────┐
+│    kgateway Control Plane            │
+│  (Manages agentgateway proxies)      │
+└──────────────┬───────────────────────┘
+               │
+               ▼
+┌──────────────────────────────────────┐
+│     Gateway API Resources            │
+│  - Gateway                           │
+│  - HTTPRoute                         │
+│  - AgentgatewayParameters            │
+└──────────────┬───────────────────────┘
+               │
+               ▼
+┌──────────────────────────────────────┐
+│   agentgateway Proxy Pods            │
+│  (Auto-provisioned)                  │
+└─────┬──────────────────────┬─────────┘
+      │                      │
+      ▼                      ▼
+┌─────────────┐      ┌──────────────┐
+│ API Traffic │      │  UI Access   │
+│ Port 3000   │      │  Port 15000  │
+└─────────────┘      └──────────────┘
+```
+
+### Key Components
+
+- **kgateway Control Plane**: Manages proxy lifecycle via Helm chart
+- **Gateway**: Entry point for traffic, references configuration
+- **HTTPRoute**: Routing rules for API traffic
+- **AgentgatewayParameters**: Configuration CRD for proxy settings
+- **UI Service**: Separate service for UI access on subdomain
+- **Ingresses**: SSL-enabled ingresses for both API and UI
+
+### Access Points
+
+- **API**: `https://agentgateway.prometheusags.ai`
+- **UI**: `https://ui.agentgateway.prometheusags.ai/ui`
+- **Health**: `https://agentgateway.prometheusags.ai/health`
 
 ## Prerequisites
 
@@ -46,7 +102,10 @@ Images will be pushed to: `docker.io/tribehealth/agentgateway:*`
 Your GKE cluster must have:
 - **nginx-ingress controller**: For SSL termination and routing
 - **cert-manager**: For automatic SSL certificate management
-- **DNS configuration**: `agentgateway.prometheusags.ai` pointing to your ingress load balancer
+- **Helm 3**: For installing kgateway control plane
+- **DNS configuration**: 
+  - `agentgateway.prometheusags.ai` → Load balancer IP (API)
+  - `ui.agentgateway.prometheusags.ai` → Load balancer IP (UI)
 
 ## GitHub Secrets Configuration
 
@@ -78,38 +137,63 @@ kubectl config view --raw --flatten | base64 -w 0
 
 ## Manual Deployment
 
-### 1. Create Secrets
-
-First, create the OpenAI API key secret:
+### 1. Install Gateway API CRDs
 
 ```bash
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
+```
+
+### 2. Create namespace and secrets
+
+```bash
+# Create namespace for kgateway system
+kubectl create namespace agentgateway-system
+
+# Create OpenAI API key secret
 kubectl create secret generic agentgateway-secrets \
   --from-literal=openai-api-key=YOUR_OPENAI_API_KEY \
-  --namespace=agentgateway
+  --namespace=agentgateway-system
 ```
 
-### 2. Deploy using the script
+### 3. Install kgateway control plane
 
 ```bash
-# Make the script executable
-chmod +x k8s/deploy.sh
+# Install kgateway CRDs
+helm upgrade -i agentgateway-crds oci://ghcr.io/kgateway-dev/charts/agentgateway-crds \
+  --namespace agentgateway-system \
+  --version v2.2.0-main \
+  --wait
 
-# Run deployment
-./k8s/deploy.sh
+# Install kgateway control plane
+helm upgrade -i agentgateway oci://ghcr.io/kgateway-dev/charts/agentgateway \
+  --namespace agentgateway-system \
+  --version v2.2.0-main \
+  --values k8s/kgateway-values.yaml \
+  --wait
 ```
 
-### 3. Manual deployment steps
-
-If you prefer manual deployment:
+### 4. Deploy AgentGateway configuration
 
 ```bash
-# Apply in order
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/deployment.yaml
-kubectl apply -f k8s/service.yaml
+# Apply SSL cluster issuer
 kubectl apply -f k8s/cluster-issuer.yaml
-kubectl apply -f k8s/ingress.yaml
+
+# Apply AgentGateway configuration
+kubectl apply -f k8s/agentgateway-params.yaml
+
+# Apply Gateway and routing
+kubectl apply -f k8s/gateway.yaml
+kubectl apply -f k8s/httproute.yaml
+
+# Apply UI service and ingress
+kubectl apply -f k8s/ui-service.yaml
+kubectl apply -f k8s/ui-ingress.yaml
+```
+
+### 5. Wait for Gateway to be ready
+
+```bash
+kubectl wait --for=condition=Programmed gateway/agentgateway -n agentgateway-system --timeout=300s
 ```
 
 ## Automated Deployment
@@ -378,25 +462,123 @@ kubectl autoscale deployment agentgateway --cpu-percent=70 --min=2 --max=10 -n a
 - Multi-arch Docker images push to Docker Hub
 - Images are signed with cosign
 
-✅ **Kubernetes Deployment**
-- 2 replicas running healthy
-- Service accessible internally
-- ConfigMap and Secrets properly mounted
+✅ **kgateway Control Plane**
+- kgateway controller running in `agentgateway-system` namespace
+- Gateway API CRDs installed
+- AgentgatewayParameters CRD applied successfully
+
+✅ **Gateway and Proxy**
+- Gateway resource shows `Programmed` condition
+- agentgateway proxy pods running healthy
+- HTTPRoute attached to Gateway
+- Services auto-created by Gateway API
 
 ✅ **SSL and Ingress**
-- HTTPS accessible via `agentgateway.prometheusags.ai`
-- SSL certificate automatically issued and renewed
+- HTTPS accessible via `agentgateway.prometheusags.ai` (API)
+- HTTPS accessible via `ui.agentgateway.prometheusags.ai` (UI)
+- SSL certificates automatically issued and renewed for both domains
 - CORS headers properly configured
 
 ✅ **CI/CD Pipeline**
 - Automatic deployment on main branch commits
+- kgateway Helm chart installation successful
 - Zero-downtime rolling updates
-- Health checks pass after deployment
+- Health checks pass for both API and UI
 
 ✅ **Monitoring and Observability**
-- Logs accessible via kubectl
-- Health endpoint responding
-- Prometheus metrics available (if monitoring is set up)
+- Logs accessible via kubectl for proxy pods
+- Health endpoint responding at `/health`
+- UI accessible at `/ui` on UI subdomain
+- Prometheus metrics available on port 15020
+
+## Migration from Old Deployment
+
+If you're migrating from the old standalone deployment (using `deployment.yaml`, `configmap.yaml`, etc.) to the new kgateway-based approach:
+
+### Pre-Migration Checklist
+
+1. **Backup current configuration**:
+   ```bash
+   kubectl get configmap agentgateway-config -n agentgateway -o yaml > backup-configmap.yaml
+   kubectl get secret agentgateway-secrets -n agentgateway -o yaml > backup-secrets.yaml
+   kubectl get deployment agentgateway -n agentgateway -o yaml > backup-deployment.yaml
+   ```
+
+2. **Note current settings**:
+   - OpenAI API key location
+   - Custom configuration values
+   - Resource limits
+   - Any custom environment variables
+
+### Migration Steps
+
+1. **Deploy new kgateway-based system** (follow Manual Deployment steps above)
+
+2. **Verify new deployment is working**:
+   ```bash
+   # Check Gateway status
+   kubectl get gateway -n agentgateway-system
+   
+   # Check proxy pods
+   kubectl get pods -n agentgateway-system -l gateway.networking.k8s.io/gateway-name=agentgateway
+   
+   # Test API endpoint
+   curl https://agentgateway.prometheusags.ai/health
+   
+   # Test UI endpoint
+   curl https://ui.agentgateway.prometheusags.ai/ui
+   ```
+
+3. **Update DNS for UI subdomain**:
+   - Add DNS A/CNAME record: `ui.agentgateway.prometheusags.ai` → Load balancer IP
+   - Wait for DNS propagation
+
+4. **Run cleanup script**:
+   ```bash
+   cd k8s
+   chmod +x cleanup-old.sh
+   ./cleanup-old.sh
+   ```
+
+5. **Verify cleanup**:
+   ```bash
+   # Old namespace should be empty or can be deleted
+   kubectl get all -n agentgateway
+   
+   # New namespace should have all resources
+   kubectl get all,gateway,httproute -n agentgateway-system
+   ```
+
+### Rollback Plan
+
+If you need to rollback to the old deployment:
+
+1. The old manifests are preserved with deprecation notices
+2. Restore from backups:
+   ```bash
+   kubectl apply -f backup-configmap.yaml
+   kubectl apply -f backup-deployment.yaml
+   kubectl apply -f k8s/service.yaml
+   kubectl apply -f k8s/ingress.yaml
+   ```
+
+3. Delete new deployment:
+   ```bash
+   helm uninstall agentgateway agentgateway-crds -n agentgateway-system
+   kubectl delete namespace agentgateway-system
+   ```
+
+### Key Differences
+
+| Aspect | Old Deployment | New kgateway Deployment |
+|--------|---------------|------------------------|
+| **Namespace** | `agentgateway` | `agentgateway-system` |
+| **Configuration** | ConfigMap | AgentgatewayParameters CRD |
+| **Deployment** | Manual manifests | Gateway API + Helm |
+| **UI Access** | Path-based (`/ui`) | Subdomain (`ui.agentgateway.prometheusags.ai`) |
+| **Admin Binding** | `0.0.0.0:15000` | `127.0.0.1:15000` (accessed via service) |
+| **Management** | Manual updates | kgateway control plane |
+| **Validation** | Runtime errors | Apply-time validation |
 
 ## Support
 
@@ -406,5 +588,6 @@ For issues with this deployment:
 2. Review GitHub Actions logs for build issues
 3. Use `kubectl describe` and `kubectl logs` for runtime issues
 4. Check cert-manager and ingress controller logs for SSL/routing issues
+5. For kgateway-specific issues, check [kgateway documentation](https://kgateway.dev/docs/)
 
 Remember to always test changes in a staging environment before deploying to production.

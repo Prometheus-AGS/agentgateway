@@ -1,0 +1,52 @@
+# kgateway Helm Chart Values
+# This configures the kgateway control plane for managing agentgateway proxies
+
+controller:
+  image:
+    pullPolicy: Always
+  
+  # Enable experimental Gateway API features if needed
+  extraEnv:
+    KGW_ENABLE_GATEWAY_API_EXPERIMENTAL_FEATURES: "true"
+  
+  # Resource limits for the controller
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Default settings for agentgateway proxies managed by kgateway
+agentgateway:
+  # Image configuration
+  image:
+    repository: docker.io/tribehealth/agentgateway
+    tag: latest
+    pullPolicy: Always
+  
+  # Resource limits for agentgateway proxy pods
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  
+  # Graceful shutdown configuration
+  shutdown:
+    min: 10  # Minimum termination deadline in seconds
+    max: 60  # Maximum termination grace period in seconds
+  
+  # Logging configuration
+  logging:
+    level: info
+  
+  # XDS configuration for control plane communication
+  xds:
+    host: agentgateway
+    port: 9977
+    tls:
+      enabled: false

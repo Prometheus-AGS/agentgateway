@@ -1,29 +1,24 @@
-# ⚠️  DEPRECATED: This file is deprecated and kept for reference only.
-# 
-# The recommended configuration method is now using AgentgatewayParameters CRD.
-# See agentgateway-params.yaml for the new approach.
-#
-# To migrate to the new deployment, see k8s/cleanup-old.sh
-#
-apiVersion: v1
-kind: ConfigMap
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayParameters
 metadata:
   name: agentgateway-config
-  namespace: agentgateway
+  namespace: agentgateway-system
   labels:
     app: agentgateway
-data:
-  config.yaml: |
-    # AgentGateway Configuration for Kubernetes Deployment
-    config:
-      adminAddr: "0.0.0.0:15000"
-      logging:
-        format: json
-        level: info
-        fields:
-          add:
-            service: '"agentgateway"'
-            version: '"1.0.0"'
+spec:
+  # Logging configuration with CEL expressions
+  logging:
+    format: json
+    level: info
+    fields:
+      add:
+        # CEL string literals - note the single quotes wrapping double quotes
+        service: '"agentgateway"'
+        version: '"1.0.0"'
+  
+  # Raw configuration for binds, listeners, and routes
+  # This section uses the upstream agentgateway configuration format
+  rawConfig:
     binds:
     - port: 3000
       listeners:

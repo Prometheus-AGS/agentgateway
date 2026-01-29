@@ -1,3 +1,11 @@
+# ⚠️  DEPRECATED: This file is deprecated and kept for reference only.
+# 
+# The recommended deployment method is now using kgateway control plane.
+# Services are automatically created by the Gateway API.
+# For UI access, see ui-service.yaml
+#
+# To migrate to the new deployment, see k8s/cleanup-old.sh
+#
 apiVersion: v1
 kind: Service
 metadata:

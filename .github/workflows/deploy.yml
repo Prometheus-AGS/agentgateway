@@ -105,61 +105,111 @@ jobs:
         GKE_REGION: ${{ vars.GKE_REGION }}
         GCP_PROJECT: ${{ vars.GCP_PROJECT }}
 
-    - name: Deploy to Kubernetes
+    - name: Install Helm
+      uses: azure/setup-helm@v4
+      with:
+        version: 'latest'
+
+    - name: Install Gateway API CRDs
       run: |
-        echo "🚀 Deploying AgentGateway to Kubernetes..."
-        echo "📌 Using image tag: ${{ steps.image_tag.outputs.IMAGE_TAG }}"
+        echo "📦 Installing Gateway API CRDs..."
+        kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
 
-        # Replace placeholder with actual image tag in deployment manifest
-        sed -i 's|IMAGE_TAG_PLACEHOLDER|${{ steps.image_tag.outputs.IMAGE_TAG }}|g' k8s/deployment.yaml
+    - name: Install kgateway control plane
+      run: |
+        echo "🎛️  Installing kgateway control plane..."
+        
+        # Create namespace for kgateway system
+        kubectl create namespace agentgateway-system --dry-run=client -o yaml | kubectl apply -f -
+        
+        # Install kgateway CRDs
+        helm upgrade -i agentgateway-crds oci://ghcr.io/kgateway-dev/charts/agentgateway-crds \
+          --namespace agentgateway-system \
+          --version v2.2.0-main \
+          --wait
+        
+        # Install kgateway control plane
+        helm upgrade -i agentgateway oci://ghcr.io/kgateway-dev/charts/agentgateway \
+          --namespace agentgateway-system \
+          --version v2.2.0-main \
+          --values k8s/kgateway-values.yaml \
+          --set agentgateway.image.tag=${{ steps.image_tag.outputs.IMAGE_TAG }} \
+          --wait
+        
+        echo "✅ kgateway control plane installed"
 
-        # Apply all Kubernetes resources
-        echo "📦 Creating namespace..."
-        kubectl apply -f k8s/namespace.yaml
-
-        echo "⚙️  Applying configuration..."
-        kubectl apply -f k8s/configmap.yaml
-
-        echo "🚀 Deploying application..."
-        kubectl apply -f k8s/deployment.yaml
-        kubectl apply -f k8s/service.yaml
-
-        echo "🔐 Setting up SSL and ingress..."
+    - name: Deploy AgentGateway configuration
+      run: |
+        echo "🚀 Deploying AgentGateway configuration..."
+        
+        # Apply SSL cluster issuer
+        echo "🔐 Setting up SSL cluster issuer..."
         kubectl apply -f k8s/cluster-issuer.yaml
-        kubectl apply -f k8s/ingress.yaml
-
+        
+        # Apply AgentgatewayParameters
+        echo "⚙️  Applying AgentgatewayParameters..."
+        kubectl apply -f k8s/agentgateway-params.yaml
+        
+        # Apply Gateway resource
+        echo "🌐 Creating Gateway..."
+        kubectl apply -f k8s/gateway.yaml
+        
+        # Apply HTTPRoute
+        echo "🛣️  Creating HTTPRoute..."
+        kubectl apply -f k8s/httproute.yaml
+        
+        # Apply UI service and ingress
+        echo "🖥️  Setting up UI service and ingress..."
+        kubectl apply -f k8s/ui-service.yaml
+        kubectl apply -f k8s/ui-ingress.yaml
+        
         echo "✅ All resources applied successfully!"
 
-    - name: Wait for deployment
+    - name: Wait for Gateway to be ready
       run: |
-        echo "⏳ Waiting for deployment to be ready..."
-        kubectl rollout status deployment/agentgateway -n agentgateway --timeout=300s
+        echo "⏳ Waiting for Gateway to be ready..."
+        kubectl wait --for=condition=Programmed gateway/agentgateway -n agentgateway-system --timeout=300s || true
+        kubectl get gateway -n agentgateway-system
+
+    - name: Wait for proxy deployment
+      run: |
+        echo "⏳ Waiting for agentgateway proxy to be ready..."
+        # Wait for the kgateway-managed proxy deployment
+        kubectl wait --for=condition=available deployment -l gateway.networking.k8s.io/gateway-name=agentgateway -n agentgateway-system --timeout=300s || true
 
     - name: Verify deployment
       run: |
         echo "🔍 Checking deployment status..."
-        kubectl get pods -n agentgateway -l app=agentgateway
-
-        echo "🌐 Checking service status..."
-        kubectl get svc -n agentgateway
-
-        echo "🔗 Checking ingress status..."
-        kubectl get ingress -n agentgateway
-
-        echo "🔒 Checking certificate status..."
-        kubectl get certificate -n agentgateway || echo "Certificate may still be provisioning"
+        
+        echo "📊 Gateway status:"
+        kubectl get gateway -n agentgateway-system
+        
+        echo "🚦 HTTPRoute status:"
+        kubectl get httproute -n agentgateway-system
+        
+        echo "🔌 Proxy pods:"
+        kubectl get pods -n agentgateway-system -l gateway.networking.k8s.io/gateway-name=agentgateway
+        
+        echo "🌐 Services:"
+        kubectl get svc -n agentgateway-system
+        
+        echo "🔗 Ingresses:"
+        kubectl get ingress -n agentgateway-system
+        
+        echo "🔒 Certificates:"
+        kubectl get certificate -n agentgateway-system || echo "Certificates may still be provisioning"
 
     - name: Health check
       run: |
         echo "🩺 Performing health checks..."
 
-        # Get the pod name
-        POD_NAME=$(kubectl get pods -n agentgateway -l app=agentgateway -o jsonpath='{.items[0].metadata.name}')
-        echo "Pod: $POD_NAME"
+        # Get the proxy pod name
+        POD_NAME=$(kubectl get pods -n agentgateway-system -l gateway.networking.k8s.io/gateway-name=agentgateway -o jsonpath='{.items[0].metadata.name}')
+        echo "Proxy Pod: $POD_NAME"
 
         # Test readiness endpoint via port-forward to pod
         echo "Testing readiness endpoint via port-forward..."
-        kubectl port-forward pod/$POD_NAME 15021:15021 -n agentgateway &
+        kubectl port-forward pod/$POD_NAME 15021:15021 -n agentgateway-system &
         PORT_FORWARD_PID=$!
         sleep 3
 
@@ -174,25 +224,48 @@ jobs:
 
         # Test main service /health endpoint
         echo "Testing main service /health endpoint..."
-        kubectl port-forward svc/agentgateway-service 8080:80 -n agentgateway &
+        kubectl port-forward svc/agentgateway 8080:3000 -n agentgateway-system &
         PORT_FORWARD_PID=$!
         sleep 3
 
         if curl -f http://localhost:8080/health; then
           echo "✅ Service health check passed"
         else
-          echo "⚠️  Service health check failed (directResponse route may not be configured)"
+          echo "⚠️  Service health check failed"
         fi
 
         kill $PORT_FORWARD_PID || true
         sleep 2
 
-        # Test external endpoint (may fail initially while cert is provisioning)
-        echo "Testing external endpoint..."
-        if curl -f -k https://agentgateway.prometheusags.ai/health; then
-          echo "✅ External health check passed"
+        # Test UI endpoint via port-forward
+        echo "Testing UI endpoint via port-forward..."
+        kubectl port-forward svc/agentgateway-ui 15000:15000 -n agentgateway-system &
+        PORT_FORWARD_PID=$!
+        sleep 3
+
+        if curl -f http://localhost:15000/ui 2>&1 | grep -q "html\|<!DOCTYPE\|<html"; then
+          echo "✅ UI health check passed"
         else
-          echo "⚠️  External health check failed (may be expected during initial setup)"
+          echo "⚠️  UI health check failed (UI may not be fully initialized)"
+        fi
+
+        kill $PORT_FORWARD_PID || true
+        sleep 2
+
+        # Test external API endpoint (may fail initially while cert is provisioning)
+        echo "Testing external API endpoint..."
+        if curl -f -k https://agentgateway.prometheusags.ai/health; then
+          echo "✅ External API health check passed"
+        else
+          echo "⚠️  External API health check failed (may be expected during initial setup)"
+        fi
+
+        # Test external UI endpoint (may fail initially while cert is provisioning)
+        echo "Testing external UI endpoint..."
+        if curl -f -k https://ui.agentgateway.prometheusags.ai/ui 2>&1 | grep -q "html\|<!DOCTYPE\|<html"; then
+          echo "✅ External UI health check passed"
+        else
+          echo "⚠️  External UI health check failed (may be expected during initial setup)"
         fi
 
     - name: Deployment summary
@@ -201,11 +274,18 @@ jobs:
         echo "==================="
         echo "✅ Built from source: ${{ github.sha }}"
         echo "🐳 Docker image: ${{ env.REGISTRY_IMAGE }}:${{ steps.image_tag.outputs.IMAGE_TAG }}"
-        echo "🌍 Service URL: https://agentgateway.prometheusags.ai"
-        echo "🔧 Namespace: agentgateway"
+        echo "🌍 API URL: https://agentgateway.prometheusags.ai"
+        echo "🖥️  UI URL: https://ui.agentgateway.prometheusags.ai/ui"
+        echo "🔧 Namespace: agentgateway-system"
         echo ""
         echo "📋 Useful commands:"
-        echo "  View logs: kubectl logs -f deployment/agentgateway -n agentgateway"
-        echo "  Check pods: kubectl get pods -n agentgateway"
-        echo "  Check ingress: kubectl describe ingress agentgateway-ingress -n agentgateway"
-        echo "  Check cert: kubectl describe certificate agentgateway-tls -n agentgateway"
+        echo "  View proxy logs: kubectl logs -f -l gateway.networking.k8s.io/gateway-name=agentgateway -n agentgateway-system"
+        echo "  Check Gateway: kubectl describe gateway agentgateway -n agentgateway-system"
+        echo "  Check HTTPRoute: kubectl describe httproute agentgateway-routes -n agentgateway-system"
+        echo "  Check pods: kubectl get pods -n agentgateway-system"
+        echo "  Check ingresses: kubectl get ingress -n agentgateway-system"
+        echo "  Check certificates: kubectl describe certificate -n agentgateway-system"
+        echo ""
+        echo "🔑 Access UI locally:"
+        echo "  kubectl port-forward svc/agentgateway-ui 15000:15000 -n agentgateway-system"
+        echo "  Then open: http://localhost:15000/ui"

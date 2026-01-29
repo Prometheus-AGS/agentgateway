@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agentgateway-ui-ingress
+  namespace: agentgateway-system
+  labels:
+    app: agentgateway
+    component: ui
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Optional: Add basic authentication for additional security
+    # nginx.ingress.kubernetes.io/auth-type: basic
+    # nginx.ingress.kubernetes.io/auth-secret: agentgateway-ui-auth
+    # nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required - AgentGateway UI'
+spec:
+  tls:
+  - hosts:
+    - ui.agentgateway.prometheusags.ai
+    secretName: agentgateway-ui-tls
+  rules:
+  - host: ui.agentgateway.prometheusags.ai
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: agentgateway-ui
+            port:
+              number: 15000

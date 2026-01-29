@@ -1,3 +1,14 @@
+# ⚠️  DEPRECATED: This file is deprecated and kept for reference only.
+# 
+# The recommended deployment method is now using kgateway control plane.
+# See the following files for the new approach:
+#   - kgateway-values.yaml
+#   - agentgateway-params.yaml
+#   - gateway.yaml
+#   - httproute.yaml
+#
+# To migrate to the new deployment, see k8s/cleanup-old.sh
+#
 apiVersion: apps/v1
 kind: Deployment
 metadata:

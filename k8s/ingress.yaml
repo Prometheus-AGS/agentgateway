@@ -1,3 +1,10 @@
+# ⚠️  DEPRECATED: This file is deprecated and kept for reference only.
+# 
+# The recommended deployment method is now using Gateway API (HTTPRoute).
+# See httproute.yaml for API routing and ui-ingress.yaml for UI access.
+#
+# To migrate to the new deployment, see k8s/cleanup-old.sh
+#
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
