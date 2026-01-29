@@ -46,10 +46,24 @@ jobs:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+    - name: Create temporary Dockerfile without cache mounts
+      run: |
+        # Create a temporary Dockerfile that removes the problematic cache mounts
+        cp Dockerfile Dockerfile.tmp
+        # Remove cache mount lines to avoid corrupted cache
+        sed -i 's/--mount=type=cache,id=cargo[^\\]*//' Dockerfile.tmp
+        sed -i 's/--mount=type=cache,id=cargo-git[^\\]*//' Dockerfile.tmp
+        sed -i 's/--mount=type=cache,target=\/app\/target[^\\]*//' Dockerfile.tmp
+        # Clean up any empty RUN lines or backslashes
+        sed -i '/^[[:space:]]*\\[[:space:]]*$/d' Dockerfile.tmp
+        sed -i 's/RUN[[:space:]]*\\/RUN /' Dockerfile.tmp
+        echo "Modified Dockerfile created"
+
     - name: Build and push multi-arch image
       uses: docker/build-push-action@v6
       with:
         context: .
+        file: ./Dockerfile.tmp
         platforms: linux/amd64,linux/arm64
         push: true
         tags: |
@@ -58,9 +72,8 @@ jobs:
         build-args: |
           VERSION=${{ env.IMAGE_TAG }}
           GIT_REVISION=${{ github.sha }}
-        # Temporarily disable cache to work around corruption issue
-        # TODO: Re-enable with fresh cache key after successful build
-        no-cache: true
+        # Use fresh build without corrupted cache
+        pull: true
 
     - name: Install cosign
       uses: sigstore/cosign-installer@v3.9.2
