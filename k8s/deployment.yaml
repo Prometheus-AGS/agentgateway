@@ -35,6 +35,9 @@ spec:
         - name: http
           containerPort: 3000
           protocol: TCP
+        - name: admin
+          containerPort: 15000
+          protocol: TCP
         - name: readiness
           containerPort: 15021
           protocol: TCP

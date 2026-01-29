@@ -16,5 +16,9 @@ spec:
     port: 80
     targetPort: http
     protocol: TCP
+  - name: admin
+    port: 15000
+    targetPort: admin
+    protocol: TCP
   selector:
     app: agentgateway

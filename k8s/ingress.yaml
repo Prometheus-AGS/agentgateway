@@ -27,6 +27,15 @@ spec:
   - host: agentgateway.prometheusags.ai
     http:
       paths:
+      # UI route - must come first to match before catch-all
+      - path: /ui
+        pathType: Prefix
+        backend:
+          service:
+            name: agentgateway-service
+            port:
+              number: 15000
+      # API/Proxy route - catch-all for everything else
       - path: /
         pathType: Prefix
         backend:

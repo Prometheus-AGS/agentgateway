@@ -9,13 +9,14 @@ data:
   config.yaml: |
     # AgentGateway Configuration for Kubernetes Deployment
     config:
+      adminAddr: "0.0.0.0:15000"
       logging:
         format: json
         level: info
         fields:
           add:
-            service: agentgateway
-            version: "1.0.0"
+            service: '"agentgateway"'
+            version: '"1.0.0"'
     binds:
     - port: 3000
       listeners:
