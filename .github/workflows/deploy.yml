@@ -58,8 +58,9 @@ jobs:
         build-args: |
           VERSION=${{ env.IMAGE_TAG }}
           GIT_REVISION=${{ github.sha }}
-        cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache
-        cache-to: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache,mode=max
+        # Temporarily disable cache to work around corruption issue
+        # TODO: Re-enable with fresh cache key after successful build
+        no-cache: true
 
     - name: Install cosign
       uses: sigstore/cosign-installer@v3.9.2
