@@ -7,7 +7,6 @@ on:
 
 env:
   REGISTRY_IMAGE: docker.io/tribehealth/agentgateway
-  IMAGE_TAG: "01282026"
 
 jobs:
   build-and-deploy:
@@ -19,6 +18,14 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Generate image tag
+      id: image_tag
+      run: |
+        # Generate timestamp in MMDDYY-HHMM format (UTC)
+        IMAGE_TAG=$(date -u +'%m%d%y-%H%M')
+        echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+        echo "Generated image tag: ${IMAGE_TAG}"
 
     - name: Prep Runner
       uses: ./.github/actions/prep-runner
@@ -60,10 +67,10 @@ jobs:
         platforms: linux/amd64,linux/arm64
         push: true
         tags: |
-          ${{ env.REGISTRY_IMAGE }}:${{ env.IMAGE_TAG }}
+          ${{ env.REGISTRY_IMAGE }}:${{ steps.image_tag.outputs.IMAGE_TAG }}
           ${{ env.REGISTRY_IMAGE }}:latest
         build-args: |
-          VERSION=${{ env.IMAGE_TAG }}
+          VERSION=${{ steps.image_tag.outputs.IMAGE_TAG }}
           GIT_REVISION=${{ github.sha }}
         # Research-backed solution: Use GitHub Actions cache backend instead of registry
         cache-from: type=gha
@@ -75,7 +82,7 @@ jobs:
       uses: sigstore/cosign-installer@v3.9.2
 
     - name: Sign the container image
-      run: cosign sign --yes ${{ env.REGISTRY_IMAGE }}:${{ env.IMAGE_TAG }}
+      run: cosign sign --yes ${{ env.REGISTRY_IMAGE }}:${{ steps.image_tag.outputs.IMAGE_TAG }}
 
     - name: Authenticate to GCP
       uses: google-github-actions/auth@v2
@@ -101,6 +108,10 @@ jobs:
     - name: Deploy to Kubernetes
       run: |
         echo "🚀 Deploying AgentGateway to Kubernetes..."
+        echo "📌 Using image tag: ${{ steps.image_tag.outputs.IMAGE_TAG }}"
+
+        # Replace placeholder with actual image tag in deployment manifest
+        sed -i 's|IMAGE_TAG_PLACEHOLDER|${{ steps.image_tag.outputs.IMAGE_TAG }}|g' k8s/deployment.yaml
 
         # Apply all Kubernetes resources
         echo "📦 Creating namespace..."
@@ -173,7 +184,7 @@ jobs:
         echo "🎉 Deployment Summary"
         echo "==================="
         echo "✅ Built from source: ${{ github.sha }}"
-        echo "🐳 Docker image: ${{ env.REGISTRY_IMAGE }}:${{ env.IMAGE_TAG }}"
+        echo "🐳 Docker image: ${{ env.REGISTRY_IMAGE }}:${{ steps.image_tag.outputs.IMAGE_TAG }}"
         echo "🌍 Service URL: https://agentgateway.prometheusags.ai"
         echo "🔧 Namespace: agentgateway"
         echo ""

@@ -15,7 +15,7 @@ data:
         fields:
           add:
             service: agentgateway
-            version: "${VERSION:-latest}"
+            version: "1.0.0"
     binds:
     - port: 3000
       listeners:

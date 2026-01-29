@@ -6,7 +6,7 @@ metadata:
   labels:
     app: agentgateway
 spec:
-  replicas: 2
+  replicas: 1
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -26,7 +26,7 @@ spec:
     spec:
       containers:
       - name: agentgateway
-        image: docker.io/tribehealth/agentgateway:01282026
+        image: docker.io/tribehealth/agentgateway:IMAGE_TAG_PLACEHOLDER
         imagePullPolicy: Always
         args:
           - "-f"
