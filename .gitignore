@@ -5,3 +5,7 @@
 .venv
 *.local
 var/
+.claude/
+helm/
+Dockerfile.test
+ui/package-lock.json

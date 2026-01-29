@@ -4,3 +4,7 @@ target
 .DS_Store
 manifests
 examples
+.claude
+helm
+Dockerfile.test
+ui/package-lock.json
