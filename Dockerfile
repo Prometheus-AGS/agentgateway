@@ -80,13 +80,16 @@ ENV CXX=clang++
 ENV LDFLAGS="-fuse-ld=lld-17"
 ENV CFLAGS="--sysroot=/sysroots/current -fuse-ld=lld-17"
 
+# Ensure cargo git cache directories exist to prevent lockfile rename errors
+RUN mkdir -p /usr/local/cargo/git/db /usr/local/cargo/git/checkouts /usr/local/cargo/registry
+
 RUN \
-    --mount=type=cache,id=cargo,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=cargo-${TARGETARCH},target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=cargo-git-${TARGETARCH},target=/usr/local/cargo/git,sharing=locked \
     cargo fetch --locked
 RUN --mount=type=cache,target=/app/target \
-    --mount=type=cache,id=cargo,target=/usr/local/cargo/registry  \
-    --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=cargo-${TARGETARCH},target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=cargo-git-${TARGETARCH},target=/usr/local/cargo/git,sharing=locked \
     <<EOF
 export VERSION="${VERSION}"
 export GIT_REVISION="${GIT_REVISION}"
