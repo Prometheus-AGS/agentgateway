@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentgateway-config
+  namespace: agentgateway
+  labels:
+    app: agentgateway
+data:
+  config.yaml: |
+    # AgentGateway Configuration for Kubernetes Deployment
+    config:
+      logging:
+        format: json
+        level: info
+        fields:
+          add:
+            service: agentgateway
+            version: "${VERSION:-latest}"
+    binds:
+    - port: 3000
+      listeners:
+      - name: main
+        routes:
+        - policies:
+            cors:
+              allowOrigins:
+              - "*"
+              allowHeaders:
+              - "content-type"
+              - "authorization"
+              - "cache-control"
+              - "mcp-protocol-version"
+              exposeHeaders:
+              - "Mcp-Session-Id"
+          backends:
+          - ai:
+              name: default
+              provider:
+                openAI:
+                  model: gpt-4o-mini
+        - match:
+            path: /health
+          backends:
+          - static:
+              status: 200
+              body: '{"status":"healthy","service":"agentgateway"}'
+              headers:
+                set:
+                  content-type: "application/json"

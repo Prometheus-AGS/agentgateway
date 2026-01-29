@@ -1,0 +1,158 @@
+name: Build and Deploy AgentGateway to GKE
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  REGISTRY_IMAGE: docker.io/tribehealth/agentgateway
+  IMAGE_TAG: "01282026"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Prep Runner
+      uses: ./.github/actions/prep-runner
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '23'
+        cache: 'npm'
+        cache-dependency-path: ui/package-lock.json
+
+    - name: Build UI
+      run: |
+        cd ui
+        npm install
+        npm run build
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        registry: docker.io
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Build and push multi-arch image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: |
+          ${{ env.REGISTRY_IMAGE }}:${{ env.IMAGE_TAG }}
+          ${{ env.REGISTRY_IMAGE }}:latest
+        build-args: |
+          VERSION=${{ env.IMAGE_TAG }}
+          GIT_REVISION=${{ github.sha }}
+        cache-from: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache
+        cache-to: type=registry,ref=${{ env.REGISTRY_IMAGE }}:buildcache,mode=max
+
+    - name: Install cosign
+      uses: sigstore/cosign-installer@v3.9.2
+
+    - name: Sign the container image
+      run: cosign sign --yes ${{ env.REGISTRY_IMAGE }}:${{ env.IMAGE_TAG }}
+
+    - name: Configure kubectl
+      run: |
+        echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > ${HOME}/.kube/config
+        kubectl config current-context
+
+    - name: Deploy to Kubernetes
+      run: |
+        echo "🚀 Deploying AgentGateway to Kubernetes..."
+
+        # Apply all Kubernetes resources
+        echo "📦 Creating namespace..."
+        kubectl apply -f k8s/namespace.yaml
+
+        echo "⚙️  Applying configuration..."
+        kubectl apply -f k8s/configmap.yaml
+
+        echo "🚀 Deploying application..."
+        kubectl apply -f k8s/deployment.yaml
+        kubectl apply -f k8s/service.yaml
+
+        echo "🔐 Setting up SSL and ingress..."
+        kubectl apply -f k8s/cluster-issuer.yaml
+        kubectl apply -f k8s/ingress.yaml
+
+        echo "✅ All resources applied successfully!"
+
+    - name: Wait for deployment
+      run: |
+        echo "⏳ Waiting for deployment to be ready..."
+        kubectl rollout status deployment/agentgateway -n agentgateway --timeout=300s
+
+    - name: Verify deployment
+      run: |
+        echo "🔍 Checking deployment status..."
+        kubectl get pods -n agentgateway -l app=agentgateway
+
+        echo "🌐 Checking service status..."
+        kubectl get svc -n agentgateway
+
+        echo "🔗 Checking ingress status..."
+        kubectl get ingress -n agentgateway
+
+        echo "🔒 Checking certificate status..."
+        kubectl get certificate -n agentgateway || echo "Certificate may still be provisioning"
+
+    - name: Health check
+      run: |
+        echo "🩺 Performing health checks..."
+
+        # Wait for pods to be fully ready
+        sleep 30
+
+        # Test via port-forward first
+        echo "Testing via port-forward..."
+        kubectl port-forward svc/agentgateway-service 8080:80 -n agentgateway &
+        PORT_FORWARD_PID=$!
+        sleep 5
+
+        if curl -f http://localhost:8080/health; then
+          echo "✅ Internal health check passed"
+        else
+          echo "❌ Internal health check failed"
+        fi
+
+        kill $PORT_FORWARD_PID || true
+        sleep 2
+
+        # Test external endpoint (may fail initially while cert is provisioning)
+        echo "Testing external endpoint..."
+        if curl -f -k https://agentgateway.prometheusags.ai/health; then
+          echo "✅ External health check passed"
+        else
+          echo "⚠️  External health check failed (may be expected during initial setup)"
+        fi
+
+    - name: Deployment summary
+      run: |
+        echo "🎉 Deployment Summary"
+        echo "==================="
+        echo "✅ Built from source: ${{ github.sha }}"
+        echo "🐳 Docker image: ${{ env.REGISTRY_IMAGE }}:${{ env.IMAGE_TAG }}"
+        echo "🌍 Service URL: https://agentgateway.prometheusags.ai"
+        echo "🔧 Namespace: agentgateway"
+        echo ""
+        echo "📋 Useful commands:"
+        echo "  View logs: kubectl logs -f deployment/agentgateway -n agentgateway"
+        echo "  Check pods: kubectl get pods -n agentgateway"
+        echo "  Check ingress: kubectl describe ingress agentgateway-ingress -n agentgateway"
+        echo "  Check cert: kubectl describe certificate agentgateway-tls -n agentgateway"

@@ -1,6 +1,6 @@
 # Image configuration
-DOCKER_REGISTRY ?= ghcr.io
-DOCKER_REPO ?= agentgateway
+DOCKER_REGISTRY ?= docker.io
+DOCKER_REPO ?= tribehealth
 IMAGE_NAME ?= agentgateway
 VERSION ?= $(shell git describe --tags --always --dirty)
 GIT_REVISION ?= $(shell git rev-parse HEAD)
@@ -16,12 +16,12 @@ docker:
 ifeq ($(OS),Windows_NT)
 	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) -f Dockerfile.windows -t $(IMAGE_FULL_NAME) .
 else
-	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) -t $(IMAGE_FULL_NAME) . --progress=plain
+	DOCKER_BUILDKIT=1 $(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) --build-arg BUILDPLATFORM=linux/$(shell uname -m) -t $(IMAGE_FULL_NAME) .
 endif
 
 .PHONY: docker-musl
 docker-musl:
-	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) -t $(IMAGE_FULL_NAME)-musl --build-arg=BUILDER=musl . --progress=plain
+	DOCKER_BUILDKIT=1 $(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) --build-arg BUILDPLATFORM=linux/$(shell uname -m) -t $(IMAGE_FULL_NAME)-musl --build-arg=BUILDER=musl .
 
 CARGO_BUILD_ARGS ?=
 # build
