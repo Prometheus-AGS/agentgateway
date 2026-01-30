@@ -122,15 +122,24 @@ jobs:
         # Create namespace for kgateway system
         kubectl create namespace agentgateway-system --dry-run=client -o yaml | kubectl apply -f -
         
-        # Check if there are existing conflicting resources and clean them up
+        # Check if there are existing conflicting resources and delete them
         echo "Checking for existing resources that might conflict..."
-        if kubectl get serviceaccount agentgateway -n agentgateway-system 2>/dev/null; then
-          echo "Found existing ServiceAccount, removing conflicting labels..."
-          kubectl label serviceaccount agentgateway -n agentgateway-system app.kubernetes.io/managed-by- --overwrite || true
-        fi
-        if kubectl get service agentgateway -n agentgateway-system 2>/dev/null; then
-          echo "Found existing Service, removing conflicting labels..."
-          kubectl label service agentgateway -n agentgateway-system app.kubernetes.io/managed-by- --overwrite || true
+        if helm list -n agentgateway-system | grep -q agentgateway; then
+          echo "Found existing Helm release, checking for conflicts..."
+          
+          # Delete conflicting resources that Helm can't adopt
+          if kubectl get serviceaccount agentgateway -n agentgateway-system 2>/dev/null; then
+            echo "Deleting existing ServiceAccount to allow Helm to manage it..."
+            kubectl delete serviceaccount agentgateway -n agentgateway-system --ignore-not-found=true
+          fi
+          
+          if kubectl get service agentgateway -n agentgateway-system 2>/dev/null; then
+            echo "Deleting existing Service to allow Helm to manage it..."
+            kubectl delete service agentgateway -n agentgateway-system --ignore-not-found=true
+          fi
+          
+          # Wait a moment for resources to be fully deleted
+          sleep 5
         fi
         
         # Install kgateway CRDs
@@ -139,13 +148,13 @@ jobs:
           --version v2.2.0-main \
           --wait
         
-        # Install kgateway control plane with force flag to adopt existing resources
+        # Install kgateway control plane
         helm upgrade -i agentgateway oci://ghcr.io/kgateway-dev/charts/agentgateway \
           --namespace agentgateway-system \
           --version v2.2.0-main \
           --values k8s/kgateway-values.yaml \
           --set agentgateway.image.tag=${{ steps.image_tag.outputs.IMAGE_TAG }} \
-          --force \
+          --cleanup-on-fail \
           --wait
         
         echo "✅ kgateway control plane installed"
