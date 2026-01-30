@@ -6,19 +6,26 @@ metadata:
   labels:
     app: agentgateway
 spec:
-  # Logging configuration with CEL expressions
+  # Basic logging configuration (only format and level supported in spec)
   logging:
     format: json
     level: info
-    fields:
-      add:
-        # CEL string literals - note the single quotes wrapping double quotes
-        service: '"agentgateway"'
-        version: '"1.0.0"'
   
-  # Raw configuration for binds, listeners, and routes
+  # Raw configuration for advanced features including logging fields with CEL
   # This section uses the upstream agentgateway configuration format
   rawConfig:
+    # Logging configuration with CEL expressions
+    config:
+      logging:
+        format: json
+        level: info
+        fields:
+          add:
+            # CEL string literals - note the single quotes wrapping double quotes
+            service: '"agentgateway"'
+            version: '"1.0.0"'
+    
+    # Binds, listeners, and routes
     binds:
     - port: 3000
       listeners:
