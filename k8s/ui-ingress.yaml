@@ -21,10 +21,10 @@ metadata:
 spec:
   tls:
   - hosts:
-    - ui.agentgateway.prometheusags.ai
+    - gateway-ui.prometheusags.ai
     secretName: agentgateway-ui-tls
   rules:
-  - host: ui.agentgateway.prometheusags.ai
+  - host: gateway-ui.prometheusags.ai
     http:
       paths:
       - path: /

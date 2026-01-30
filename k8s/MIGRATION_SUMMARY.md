@@ -18,7 +18,7 @@ Your AgentGateway deployment has been migrated from a custom standalone approach
 - kgateway control plane managing proxy lifecycle
 - Gateway API resources (Gateway, HTTPRoute)
 - AgentgatewayParameters CRD for validated configuration
-- Separate UI service and ingress on subdomain (`ui.agentgateway.prometheusags.ai`)
+- Separate UI service and ingress on subdomain (`gateway-ui.prometheusags.ai`)
 - Admin interface on `127.0.0.1:15000` (accessed via dedicated service)
 
 ### New Files Created
@@ -51,7 +51,7 @@ After deployment, you'll have:
 
 - **API**: https://agentgateway.prometheusags.ai
 - **Health**: https://agentgateway.prometheusags.ai/health
-- **UI**: https://ui.agentgateway.prometheusags.ai/ui
+- **UI**: https://gateway-ui.prometheusags.ai/ui
 
 ## Deployment Flow
 
@@ -70,7 +70,7 @@ The GitHub Actions workflow now:
 ### 1. Update DNS Configuration
 
 Add a DNS record for the UI subdomain:
-- **Record**: `ui.agentgateway.prometheusags.ai`
+- **Record**: `gateway-ui.prometheusags.ai`
 - **Type**: A or CNAME
 - **Value**: Same load balancer IP as `agentgateway.prometheusags.ai`
 
@@ -125,7 +125,7 @@ kubectl get ingress -n agentgateway-system
 curl https://agentgateway.prometheusags.ai/health
 
 # Test UI (after DNS propagation)
-curl https://ui.agentgateway.prometheusags.ai/ui
+curl https://gateway-ui.prometheusags.ai/ui
 ```
 
 ### 4. Clean Up Old Deployment (After Verification)
@@ -195,7 +195,7 @@ kubectl port-forward svc/agentgateway-ui 15000:15000 -n agentgateway-system
 
 ```bash
 # Check DNS propagation
-nslookup ui.agentgateway.prometheusags.ai
+nslookup gateway-ui.prometheusags.ai
 
 # Check ingress external IP
 kubectl get ingress -n agentgateway-system

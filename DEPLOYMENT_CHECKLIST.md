@@ -66,7 +66,7 @@ The GitHub Actions workflow will:
 
 ```
 Type: A or CNAME
-Name: ui.agentgateway.prometheusags.ai
+Name: gateway-ui.prometheusags.ai
 Value: [Same load balancer IP as agentgateway.prometheusags.ai]
 ```
 
@@ -110,7 +110,7 @@ kubectl create secret generic agentgateway-secrets \
 After successful deployment:
 - **API**: https://agentgateway.prometheusags.ai
 - **Health**: https://agentgateway.prometheusags.ai/health
-- **UI**: https://ui.agentgateway.prometheusags.ai/ui (after DNS propagation)
+- **UI**: https://gateway-ui.prometheusags.ai/ui (after DNS propagation)
 
 ### Verify Deployment
 
@@ -133,7 +133,7 @@ kubectl get ingress -n agentgateway-system
 curl https://agentgateway.prometheusags.ai/health
 
 # Test UI (may need to wait for DNS)
-curl https://ui.agentgateway.prometheusags.ai/ui
+curl https://gateway-ui.prometheusags.ai/ui
 ```
 
 ## 🧹 Post-Deployment Cleanup
@@ -172,7 +172,7 @@ kubectl logs -f deployment/agentgateway -n agentgateway-system
 ### Issue: UI not accessible
 
 **Solution**: 
-1. Verify DNS has propagated: `nslookup ui.agentgateway.prometheusags.ai`
+1. Verify DNS has propagated: `nslookup gateway-ui.prometheusags.ai`
 2. Check certificate status: `kubectl get certificate -n agentgateway-system`
 3. Test locally: `kubectl port-forward svc/agentgateway-ui 15000:15000 -n agentgateway-system`
 
@@ -203,7 +203,7 @@ Deployment is successful when:
 - [ ] Gateway shows `Programmed` condition
 - [ ] Proxy pods are running and healthy
 - [ ] API endpoint responds: https://agentgateway.prometheusags.ai/health
-- [ ] UI endpoint responds: https://ui.agentgateway.prometheusags.ai/ui
+- [ ] UI endpoint responds: https://gateway-ui.prometheusags.ai/ui
 - [ ] SSL certificates issued for both domains
 - [ ] Health checks pass in workflow
 

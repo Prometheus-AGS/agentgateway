@@ -66,7 +66,7 @@ This deployment uses the **kgateway control plane**, which provides:
 ### Access Points
 
 - **API**: `https://agentgateway.prometheusags.ai`
-- **UI**: `https://ui.agentgateway.prometheusags.ai/ui`
+- **UI**: `https://gateway-ui.prometheusags.ai/ui`
 - **Health**: `https://agentgateway.prometheusags.ai/health`
 
 ## Prerequisites
@@ -105,7 +105,7 @@ Your GKE cluster must have:
 - **Helm 3**: For installing kgateway control plane
 - **DNS configuration**: 
   - `agentgateway.prometheusags.ai` → Load balancer IP (API)
-  - `ui.agentgateway.prometheusags.ai` → Load balancer IP (UI)
+  - `gateway-ui.prometheusags.ai` → Load balancer IP (UI)
 
 ## GitHub Secrets Configuration
 
@@ -475,7 +475,7 @@ kubectl autoscale deployment agentgateway --cpu-percent=70 --min=2 --max=10 -n a
 
 ✅ **SSL and Ingress**
 - HTTPS accessible via `agentgateway.prometheusags.ai` (API)
-- HTTPS accessible via `ui.agentgateway.prometheusags.ai` (UI)
+- HTTPS accessible via `gateway-ui.prometheusags.ai` (UI)
 - SSL certificates automatically issued and renewed for both domains
 - CORS headers properly configured
 
@@ -526,11 +526,11 @@ If you're migrating from the old standalone deployment (using `deployment.yaml`,
    curl https://agentgateway.prometheusags.ai/health
    
    # Test UI endpoint
-   curl https://ui.agentgateway.prometheusags.ai/ui
+   curl https://gateway-ui.prometheusags.ai/ui
    ```
 
 3. **Update DNS for UI subdomain**:
-   - Add DNS A/CNAME record: `ui.agentgateway.prometheusags.ai` → Load balancer IP
+   - Add DNS A/CNAME record: `gateway-ui.prometheusags.ai` → Load balancer IP
    - Wait for DNS propagation
 
 4. **Run cleanup script**:
@@ -575,7 +575,7 @@ If you need to rollback to the old deployment:
 | **Namespace** | `agentgateway` | `agentgateway-system` |
 | **Configuration** | ConfigMap | AgentgatewayParameters CRD |
 | **Deployment** | Manual manifests | Gateway API + Helm |
-| **UI Access** | Path-based (`/ui`) | Subdomain (`ui.agentgateway.prometheusags.ai`) |
+| **UI Access** | Path-based (`/ui`) | Subdomain (`gateway-ui.prometheusags.ai`) |
 | **Admin Binding** | `0.0.0.0:15000` | `127.0.0.1:15000` (accessed via service) |
 | **Management** | Manual updates | kgateway control plane |
 | **Validation** | Runtime errors | Apply-time validation |

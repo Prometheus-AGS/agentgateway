@@ -159,7 +159,7 @@ The `agentgateway-params.yaml` file defines:
 After deployment:
 - **API**: `https://agentgateway.prometheusags.ai`
 - **Health**: `https://agentgateway.prometheusags.ai/health`
-- **UI**: `https://ui.agentgateway.prometheusags.ai/ui`
+- **UI**: `https://gateway-ui.prometheusags.ai/ui`
 
 ### Local UI Access (Port-forward)
 
@@ -172,7 +172,7 @@ kubectl port-forward svc/agentgateway-ui 15000:15000 -n agentgateway-system
 
 SSL is automatically managed by cert-manager with Let's Encrypt:
 - **API Domain**: `agentgateway.prometheusags.ai`
-- **UI Domain**: `ui.agentgateway.prometheusags.ai`
+- **UI Domain**: `gateway-ui.prometheusags.ai`
 - **Challenge**: HTTP-01
 - **Renewal**: Automatic
 

@@ -115,6 +115,32 @@ jobs:
         echo "📦 Installing Gateway API CRDs..."
         kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
 
+    - name: Clean up conflicting resources
+      run: |
+        echo "🧹 Cleaning up any conflicting resources..."
+        
+        # Check if there's a pending Helm operation and wait for it
+        if helm list -n agentgateway-system 2>&1 | grep -q "pending"; then
+          echo "⏳ Waiting for pending Helm operation to complete..."
+          sleep 10
+        fi
+        
+        # Remove conflicting resources that prevent Helm from managing them
+        echo "Removing conflicting ServiceAccount..."
+        kubectl delete serviceaccount agentgateway -n agentgateway-system --ignore-not-found=true
+        
+        echo "Removing conflicting Service..."
+        kubectl delete service agentgateway -n agentgateway-system --ignore-not-found=true
+        
+        echo "Removing conflicting Deployment..."
+        kubectl delete deployment agentgateway -n agentgateway-system --ignore-not-found=true
+        
+        # Wait for resources to be fully deleted
+        echo "Waiting for resources to be deleted..."
+        sleep 5
+        
+        echo "✅ Cleanup complete"
+
     - name: Install kgateway control plane
       run: |
         echo "🎛️  Installing kgateway control plane..."
@@ -129,7 +155,7 @@ jobs:
           --version v2.2.0-main \
           --wait
         
-        # Install kgateway control plane with proper conflict handling
+        # Install kgateway control plane
         echo "Installing kgateway control plane..."
         helm upgrade -i agentgateway oci://ghcr.io/kgateway-dev/charts/agentgateway \
           --namespace agentgateway-system \
@@ -138,20 +164,7 @@ jobs:
           --set agentgateway.image.tag=${{ steps.image_tag.outputs.IMAGE_TAG }} \
           --set controller.image.pullPolicy=Always \
           --cleanup-on-fail \
-          --wait || {
-            echo "⚠️  Helm upgrade failed, attempting with conflict resolution..."
-            
-            # If upgrade fails due to conflicts, try with force-conflicts flag
-            helm upgrade -i agentgateway oci://ghcr.io/kgateway-dev/charts/agentgateway \
-              --namespace agentgateway-system \
-              --version v2.2.0-main \
-              --values k8s/kgateway-values.yaml \
-              --set agentgateway.image.tag=${{ steps.image_tag.outputs.IMAGE_TAG }} \
-              --set controller.image.pullPolicy=Always \
-              --force-conflicts \
-              --cleanup-on-fail \
-              --wait
-          }
+          --wait
         
         echo "✅ kgateway control plane installed"
 
@@ -305,7 +318,7 @@ jobs:
 
         # Test external UI endpoint (may fail initially while cert is provisioning)
         echo "Testing external UI endpoint..."
-        if curl -f -k https://ui.agentgateway.prometheusags.ai/ui 2>&1 | grep -q "html\|<!DOCTYPE\|<html"; then
+        if curl -f -k https://gateway-ui.prometheusags.ai/ui 2>&1 | grep -q "html\|<!DOCTYPE\|<html"; then
           echo "✅ External UI health check passed"
         else
           echo "⚠️  External UI health check failed (may be expected during initial setup)"
@@ -318,7 +331,7 @@ jobs:
         echo "✅ Built from source: ${{ github.sha }}"
         echo "🐳 Docker image: ${{ env.REGISTRY_IMAGE }}:${{ steps.image_tag.outputs.IMAGE_TAG }}"
         echo "🌍 API URL: https://agentgateway.prometheusags.ai"
-        echo "🖥️  UI URL: https://ui.agentgateway.prometheusags.ai/ui"
+        echo "🖥️  UI URL: https://gateway-ui.prometheusags.ai/ui"
         echo "🔧 Namespace: agentgateway-system"
         echo ""
         echo "📋 Useful commands:"
