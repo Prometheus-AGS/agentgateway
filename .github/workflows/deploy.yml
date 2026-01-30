@@ -174,8 +174,25 @@ jobs:
     - name: Wait for proxy deployment
       run: |
         echo "⏳ Waiting for agentgateway proxy to be ready..."
-        # Wait for the kgateway-managed proxy deployment
-        kubectl wait --for=condition=available deployment -l gateway.networking.k8s.io/gateway-name=agentgateway -n agentgateway-system --timeout=300s || true
+        
+        # Wait for deployment to be created (may take a moment after Gateway is created)
+        echo "Waiting for deployment to be created..."
+        for i in {1..60}; do
+          if kubectl get deployment -l gateway.networking.k8s.io/gateway-name=agentgateway -n agentgateway-system 2>/dev/null | grep -q agentgateway; then
+            echo "✅ Deployment found"
+            break
+          fi
+          echo "Waiting for deployment... ($i/60)"
+          sleep 5
+        done
+        
+        # Wait for the kgateway-managed proxy deployment to be available
+        echo "Waiting for deployment to be available..."
+        kubectl wait --for=condition=available deployment -l gateway.networking.k8s.io/gateway-name=agentgateway -n agentgateway-system --timeout=300s || {
+          echo "⚠️  Deployment did not become available in time"
+          kubectl get deployment -l gateway.networking.k8s.io/gateway-name=agentgateway -n agentgateway-system
+          kubectl describe deployment -l gateway.networking.k8s.io/gateway-name=agentgateway -n agentgateway-system
+        }
 
     - name: Verify deployment
       run: |
@@ -203,8 +220,17 @@ jobs:
       run: |
         echo "🩺 Performing health checks..."
 
-        # Get the proxy pod name
-        POD_NAME=$(kubectl get pods -n agentgateway-system -l gateway.networking.k8s.io/gateway-name=agentgateway -o jsonpath='{.items[0].metadata.name}')
+        # Get the proxy pod name with error handling
+        POD_NAME=$(kubectl get pods -n agentgateway-system -l gateway.networking.k8s.io/gateway-name=agentgateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+        
+        if [ -z "$POD_NAME" ]; then
+          echo "❌ No proxy pods found. Checking deployment status..."
+          kubectl get deployment -l gateway.networking.k8s.io/gateway-name=agentgateway -n agentgateway-system
+          kubectl get pods -n agentgateway-system
+          kubectl describe gateway agentgateway -n agentgateway-system
+          exit 1
+        fi
+        
         echo "Proxy Pod: $POD_NAME"
 
         # Test readiness endpoint via port-forward to pod
