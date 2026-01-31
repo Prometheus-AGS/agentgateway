@@ -15,4 +15,5 @@ spec:
     protocol: TCP
   selector:
     # These selectors match the kgateway-managed proxy pods
+    # kgateway uses this label for gateway-provisioned pods
     gateway.networking.k8s.io/gateway-name: agentgateway
