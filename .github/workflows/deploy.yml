@@ -153,9 +153,9 @@ jobs:
       run: |
         echo "🎛️  Installing kgateway control plane..."
         
-        # Install kgateway CRDs (uses kgateway-crds as release name)
+        # Install kgateway CRDs (keep release name as agentgateway-crds for compatibility)
         echo "Installing kgateway CRDs..."
-        helm upgrade -i kgateway-crds oci://ghcr.io/kgateway-dev/charts/agentgateway-crds \
+        helm upgrade -i agentgateway-crds oci://ghcr.io/kgateway-dev/charts/agentgateway-crds \
           --namespace agentgateway-system \
           --version v2.2.0-main \
           --wait
