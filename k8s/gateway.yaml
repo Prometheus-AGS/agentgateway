@@ -13,8 +13,11 @@ spec:
       group: agentgateway.dev
       kind: AgentgatewayParameters
   listeners:
+  # Use a dummy port (3030) to avoid conflicts with the binds defined in rawConfig
+  # The actual port 3000 is defined in AgentgatewayParameters rawConfig binds
+  # See: https://kgateway.dev/docs/main/agentgateway/configuration/#rawconfig
   - name: http
-    port: 3000
+    port: 3030
     protocol: HTTP
     allowedRoutes:
       namespaces:

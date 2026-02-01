@@ -1,3 +1,11 @@
+# NOTE: This file is NOT applied when using rawConfig with internal binds.
+# The rawConfig in AgentgatewayParameters (agentgateway-params.yaml) already defines
+# routes for /health and / paths. Using this HTTPRoute with rawConfig would create
+# a routing loop since backendRefs point to the same proxy service.
+#
+# This file is kept for reference if you switch to Gateway API-native routing
+# (without rawConfig binds).
+# See: https://kgateway.dev/docs/main/agentgateway/configuration/#rawconfig
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -5,6 +13,9 @@ metadata:
   namespace: agentgateway-system
   labels:
     app: agentgateway
+  annotations:
+    # Mark as not used with rawConfig
+    kgateway.dev/note: "Not used when rawConfig defines internal routes"
 spec:
   parentRefs:
   - name: agentgateway

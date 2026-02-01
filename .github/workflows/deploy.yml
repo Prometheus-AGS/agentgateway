@@ -193,9 +193,10 @@ jobs:
         echo "🌐 Creating Gateway..."
         kubectl apply -f k8s/gateway.yaml
         
-        # Apply HTTPRoute
-        echo "🛣️  Creating HTTPRoute..."
-        kubectl apply -f k8s/httproute.yaml
+        # NOTE: HTTPRoute is NOT applied when using rawConfig with internal binds
+        # The rawConfig in AgentgatewayParameters already defines routes for /health and /
+        # See: https://kgateway.dev/docs/main/agentgateway/configuration/#rawconfig
+        # The HTTPRoute file (k8s/httproute.yaml) is kept for reference but not used
         
         # Apply UI service and ingress
         echo "🖥️  Setting up UI service and ingress..."
@@ -240,8 +241,8 @@ jobs:
         echo "📊 Gateway status:"
         kubectl get gateway -n agentgateway-system
         
-        echo "🚦 HTTPRoute status:"
-        kubectl get httproute -n agentgateway-system
+        echo "🚦 HTTPRoute status (may be empty when using rawConfig):"
+        kubectl get httproute -n agentgateway-system || echo "No HTTPRoutes (using rawConfig internal routes)"
         
         echo "🔌 Proxy pods:"
         kubectl get pods -n agentgateway-system -l gateway.networking.k8s.io/gateway-name=agentgateway
@@ -363,7 +364,7 @@ jobs:
         echo "📋 Useful commands:"
         echo "  View proxy logs: kubectl logs -f -l gateway.networking.k8s.io/gateway-name=agentgateway -n agentgateway-system"
         echo "  Check Gateway: kubectl describe gateway agentgateway -n agentgateway-system"
-        echo "  Check HTTPRoute: kubectl describe httproute agentgateway-routes -n agentgateway-system"
+        echo "  Check AgentgatewayParameters: kubectl describe agentgatewayparameters agentgateway-config -n agentgateway-system"
         echo "  Check pods: kubectl get pods -n agentgateway-system"
         echo "  Check ingresses: kubectl get ingress -n agentgateway-system"
         echo "  Check certificates: kubectl describe certificate -n agentgateway-system"

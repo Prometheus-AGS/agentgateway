@@ -36,32 +36,33 @@ This deployment uses the **kgateway control plane**, which provides:
                ▼
 ┌──────────────────────────────────────┐
 │     Gateway API Resources            │
-│  - Gateway                           │
-│  - HTTPRoute                         │
-│  - AgentgatewayParameters            │
+│  - Gateway (dummy port 3030)         │
+│  - AgentgatewayParameters (rawConfig)│
 └──────────────┬───────────────────────┘
                │
                ▼
 ┌──────────────────────────────────────┐
 │   agentgateway Proxy Pods            │
-│  (Auto-provisioned)                  │
+│  (Auto-provisioned with rawConfig)   │
 └─────┬──────────────────────┬─────────┘
       │                      │
       ▼                      ▼
 ┌─────────────┐      ┌──────────────┐
 │ API Traffic │      │  UI Access   │
 │ Port 3000   │      │  Port 15000  │
+│(rawConfig)  │      │              │
 └─────────────┘      └──────────────┘
 ```
 
 ### Key Components
 
 - **kgateway Control Plane**: Manages proxy lifecycle via Helm chart
-- **Gateway**: Entry point for traffic, references configuration
-- **HTTPRoute**: Routing rules for API traffic
-- **AgentgatewayParameters**: Configuration CRD for proxy settings
+- **Gateway**: Entry point for traffic (dummy port 3030), references configuration
+- **AgentgatewayParameters**: Configuration CRD with rawConfig (defines routes internally)
 - **UI Service**: Separate service for UI access on subdomain
-- **Ingresses**: SSL-enabled ingresses for both API and UI
+- **Ingresses**: SSL-enabled ingress for UI
+
+> **Note**: HTTPRoute is not used when AgentgatewayParameters uses rawConfig with internal binds/routes. The routing is handled by the rawConfig definition directly.
 
 ### Access Points
 

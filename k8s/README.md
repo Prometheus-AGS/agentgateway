@@ -56,12 +56,15 @@ helm upgrade -i agentgateway oci://ghcr.io/kgateway-dev/charts/agentgateway \
 # Apply SSL cluster issuer
 kubectl apply -f cluster-issuer.yaml
 
-# Apply AgentGateway configuration
+# Apply AgentGateway configuration (includes rawConfig with routes)
 kubectl apply -f agentgateway-params.yaml
 
-# Apply Gateway and routing
+# Apply Gateway (uses dummy port 3030 to avoid conflict with rawConfig binds)
 kubectl apply -f gateway.yaml
-kubectl apply -f httproute.yaml
+
+# NOTE: HTTPRoute is NOT applied when using rawConfig with internal binds
+# The rawConfig in AgentgatewayParameters defines routes for /health and /
+# See: https://kgateway.dev/docs/main/agentgateway/configuration/#rawconfig
 
 # Apply UI service and ingress
 kubectl apply -f ui-service.yaml
@@ -88,23 +91,23 @@ kubectl get svc -n agentgateway-system
 | File | Purpose |
 |------|---------|
 | `kgateway-values.yaml` | Helm values for kgateway control plane |
-| `agentgateway-params.yaml` | AgentgatewayParameters CRD configuration |
-| `gateway.yaml` | Gateway API Gateway resource |
-| `httproute.yaml` | Gateway API HTTPRoute for API traffic |
+| `agentgateway-params.yaml` | AgentgatewayParameters CRD with rawConfig (includes routes) |
+| `gateway.yaml` | Gateway API Gateway resource (dummy port 3030) |
 | `ui-service.yaml` | Service for UI access |
 | `ui-ingress.yaml` | Ingress for UI subdomain |
 | `cluster-issuer.yaml` | Let's Encrypt certificate issuer |
 | `secrets-template.yaml` | Template for creating secrets |
 | `cleanup-old.sh` | Script to remove old standalone deployment |
 
-### Deprecated Files (kept for reference)
+### Deprecated/Reference Files
 
 | File | Status |
 |------|--------|
+| `httproute.yaml` | ⚠️ NOT USED - rawConfig defines routes internally |
 | `deployment.yaml` | ⚠️ DEPRECATED - Use kgateway instead |
 | `configmap.yaml` | ⚠️ DEPRECATED - Use agentgateway-params.yaml |
 | `service.yaml` | ⚠️ DEPRECATED - Auto-created by Gateway API |
-| `ingress.yaml` | ⚠️ DEPRECATED - Use httproute.yaml and ui-ingress.yaml |
+| `ingress.yaml` | ⚠️ DEPRECATED - Use ui-ingress.yaml |
 
 ## Architecture
 
@@ -117,7 +120,13 @@ kubectl get svc -n agentgateway-system
                   ▼
 ┌─────────────────────────────────────────────┐
 │           Gateway Resource                  │
-│  (References AgentgatewayParameters)        │
+│  (Uses dummy port 3030, refs Parameters)    │
+└─────────────────┬───────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────┐
+│      AgentgatewayParameters (rawConfig)     │
+│  (Defines binds/routes on port 3000)        │
 └─────────────────┬───────────────────────────┘
                   │
                   ▼
@@ -128,31 +137,36 @@ kubectl get svc -n agentgateway-system
        │                              │
        ▼                              ▼
 ┌──────────────┐            ┌──────────────────┐
-│  HTTPRoute   │            │   UI Service     │
-│  (API/3000)  │            │   (Admin/15000)  │
+│ rawConfig    │            │   UI Service     │
+│ Routes/3000  │            │   (Admin/15000)  │
 └──────┬───────┘            └────────┬─────────┘
        │                              │
        ▼                              ▼
-  agentgateway.                ui.agentgateway.
-  prometheusags.ai             prometheusags.ai
+  agentgateway.              gateway-ui.
+  prometheusags.ai           prometheusags.ai
 ```
 
 ## Configuration
 
-### AgentgatewayParameters
+### AgentgatewayParameters (rawConfig approach)
 
-The `agentgateway-params.yaml` file defines:
-- **Logging**: JSON format with CEL expressions
-- **Binds/Listeners**: Port 3000 for HTTP traffic
-- **Routes**: Health check and main AI routes
-- **Backends**: OpenAI integration
+The `agentgateway-params.yaml` file uses `rawConfig` to define the complete routing configuration:
+- **Logging**: JSON format with CEL expressions for service/version
+- **Binds**: Port 3000 for HTTP traffic
+- **Listeners**: HTTP protocol listener
+- **Routes**: 
+  - `/health` - Direct response (health check)
+  - `/` - AI backend (OpenAI gpt-4o-mini)
+- **Policies**: CORS configuration for cross-origin requests
+
+**Important**: When using `rawConfig` with binds, the Gateway port should be a dummy value (like 3030) to avoid conflicts. See [kgateway documentation](https://kgateway.dev/docs/main/agentgateway/configuration/#rawconfig).
 
 ### Gateway API Resources
 
-- **Gateway**: Entry point for traffic, references AgentgatewayParameters
-- **HTTPRoute**: Routing rules for API traffic
+- **Gateway**: Entry point, uses dummy port 3030, references AgentgatewayParameters
+- **AgentgatewayParameters**: Contains rawConfig with internal routes (replaces HTTPRoute)
 - **UI Service**: Exposes admin port (15000) for UI access
-- **UI Ingress**: Separate subdomain for UI
+- **UI Ingress**: Separate subdomain (gateway-ui.prometheusags.ai) for UI
 
 ## Access Points
 
@@ -216,9 +230,9 @@ kubectl get pods -n agentgateway-system -l gateway.networking.k8s.io/gateway-nam
 kubectl logs -f -l gateway.networking.k8s.io/gateway-name=agentgateway -n agentgateway-system
 ```
 
-### Check HTTPRoute
+### Check AgentgatewayParameters (rawConfig)
 ```bash
-kubectl describe httproute agentgateway-routes -n agentgateway-system
+kubectl describe agentgatewayparameters agentgateway-config -n agentgateway-system
 ```
 
 ### Check certificates
